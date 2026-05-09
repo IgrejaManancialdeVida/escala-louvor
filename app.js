@@ -66,11 +66,14 @@ const fLocal    = $('form-local');
 const fTipo     = $('form-tipo');
 const fObs      = $('form-obs');
 const fApoio    = $('form-apoio');
-const fBaixo    = $('form-baixo');
-const fBateria  = $('form-bateria');
-const fGuitarra = $('form-guitarra');
-const fViolao   = $('form-violao');
-const fTeclado  = $('form-teclado');
+const fBaixo      = $('form-baixo');
+const fBateria    = $('form-bateria');
+const fGuitarra   = $('form-guitarra');
+const fViolao     = $('form-violao');
+const fTeclado    = $('form-teclado');
+const fMinistro   = $('form-ministro');
+const fDatashow   = $('form-datashow');
+const fTecnicosom = $('form-tecnicosom');
 
 // ==================== SPLASH ====================
 function initSplash() {
@@ -186,6 +189,9 @@ function saveEvent() {
     guitarra: fGuitarra.value.trim(),
     violao: fViolao.value.trim(),
     teclado: fTeclado.value.trim(),
+    ministro: fMinistro.value.trim(),
+    datashow: fDatashow.value.trim(),
+    tecnicosom: fTecnicosom.value.trim(),
   };
 
   // Upsert: replace if same date+hora exists
@@ -202,7 +208,7 @@ function saveEvent() {
 }
 
 function clearForm() {
-  [fData,fDia,fHora,fLocal,fObs,fApoio,fBaixo,fBateria,fGuitarra,fViolao,fTeclado].forEach(f => f.value = '');
+  [fData,fDia,fHora,fLocal,fObs,fApoio,fBaixo,fBateria,fGuitarra,fViolao,fTeclado,fMinistro,fDatashow,fTecnicosom].forEach(f => f.value = '');
   fTipo.value = 'Culto';
 }
 
@@ -263,7 +269,7 @@ function renderProxima() {
     $('prox-local').textContent = '—';
     $('prox-obs-row').classList.add('hidden');
     $('prox-apoio').innerHTML = '<span class="member-chip empty">—</span>';
-    ['baixo','bateria','guitarra','violao','teclado'].forEach(i => {
+    ['baixo','bateria','guitarra','violao','teclado','ministro','datashow','tecnicosom'].forEach(i => {
       const el = $(`prox-${i}`);
       el.textContent = '—';
       el.classList.add('empty');
@@ -290,7 +296,7 @@ function renderProxima() {
     apoioEl.innerHTML = '<span class="member-chip empty">Nenhum</span>';
   }
 
-  ['baixo','bateria','guitarra','violao','teclado'].forEach(i => {
+  ['baixo','bateria','guitarra','violao','teclado','ministro','datashow','tecnicosom'].forEach(i => {
     const el = $(`prox-${i}`);
     const val = event[i] || '—';
     el.textContent = val;
@@ -415,7 +421,7 @@ function highlightEvent(ev) {
   } else {
     apoioEl.innerHTML = '<span class="member-chip empty">Nenhum</span>';
   }
-  ['baixo','bateria','guitarra','violao','teclado'].forEach(i => {
+  ['baixo','bateria','guitarra','violao','teclado','ministro','datashow','tecnicosom'].forEach(i => {
     const el = $(`prox-${i}`);
     el.textContent = ev[i] || '—';
     el.classList.toggle('empty', !ev[i]);

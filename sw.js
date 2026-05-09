@@ -7,6 +7,8 @@ const ASSETS = [
   './app.js',
   './manifest.json',
   './logo-igreja.jpg',
+  './icon-192.png',
+  './icon-512.png',
   'https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Nunito:wght@300;400;500;600;700&display=swap'
 ];
 

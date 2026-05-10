@@ -1,14 +1,14 @@
-/* Service Worker — Escala do Ministério de Louvor */
-const CACHE_NAME = 'escala-louvor-v2';
+/* Service Worker — Escala do Ministério de Louvor v3 */
+const CACHE_NAME = 'escala-louvor-v3';
 const ASSETS = [
   './',
   './index.html',
   './style.css',
-  './app.js',
   './manifest.json',
   './logo-igreja.jpg',
   'https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Nunito:wght@300;400;500;600;700&display=swap'
 ];
+// app.js removido do cache — usa Firebase (dados em tempo real)
 
 self.addEventListener('install', e => {
   e.waitUntil(
@@ -29,6 +29,19 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
+  const url = new URL(e.request.url);
+
+  // Nunca cachear app.js nem requisições do Firebase/Firestore
+  if (
+    url.pathname.endsWith('app.js') ||
+    url.hostname.includes('firestore.googleapis.com') ||
+    url.hostname.includes('firebase') ||
+    url.hostname.includes('gstatic.com')
+  ) {
+    e.respondWith(fetch(e.request));
+    return;
+  }
+
   e.respondWith(
     caches.match(e.request).then(cached => {
       return cached || fetch(e.request).catch(() => cached);

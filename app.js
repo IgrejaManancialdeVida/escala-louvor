@@ -1,20 +1,45 @@
 /* ======================================
    ESCALA DO MINISTÉRIO DE LOUVOR
-   app.js — Lógica principal
+   app.js — Lógica principal + Firebase
 ====================================== */
 
 'use strict';
 
+// ==================== FIREBASE ====================
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  deleteDoc,
+  doc,
+  query,
+  orderBy,
+  onSnapshot,
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCi3eLVLZDO-v2jA7UoaLo8BtDxRsKTKWs",
+  authDomain: "escala-manancial.firebaseapp.com",
+  projectId: "escala-manancial",
+  storageBucket: "escala-manancial.firebasestorage.app",
+  messagingSenderId: "943902961676",
+  appId: "1:943902961676:web:ccb323d2bc3dc2a7503e29",
+  measurementId: "G-STNYJZV9QK"
+};
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
+const COLLECTION = 'escalas';
+
 // ==================== CONFIG ====================
 const CONFIG = {
   ADMIN_PASSWORD: 'manancial2025',
-  STORAGE_KEY: 'escala_ministerio_v1',
   DEFAULT_TIMES: {
     domingo: '19:00',
     terca:   '19:30',
     quinta:  '19:30',
   },
-  WEEK_DAYS: ['domingo','segunda','terca','quarta','quinta','sexta','sabado'],
   MONTHS_PT: ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'],
   DAYS_PT: ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'],
 };
@@ -25,21 +50,38 @@ let state = {
   currentView: 'proxima',
   currentMonth: new Date().getMonth(),
   currentYear: new Date().getFullYear(),
-  events: [],    // array of event objects
+  events: [],
 };
 
-// ==================== STORAGE ====================
-function saveToStorage() {
+// ==================== FIRESTORE ====================
+async function saveToFirestore(event) {
   try {
-    localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(state.events));
-  } catch (e) { console.warn('Storage unavailable', e); }
+    const docRef = await addDoc(collection(db, COLLECTION), event);
+    return docRef.id;
+  } catch (e) {
+    console.error('Erro ao salvar:', e);
+    showToast('❌ Erro ao salvar no Firebase');
+    return null;
+  }
 }
 
-function loadFromStorage() {
+async function deleteFromFirestore(firestoreId) {
   try {
-    const raw = localStorage.getItem(CONFIG.STORAGE_KEY);
-    if (raw) state.events = JSON.parse(raw);
-  } catch (e) { state.events = []; }
+    await deleteDoc(doc(db, COLLECTION, firestoreId));
+  } catch (e) {
+    console.error('Erro ao excluir:', e);
+    showToast('❌ Erro ao excluir');
+  }
+}
+
+function listenFirestore() {
+  const q = query(collection(db, COLLECTION), orderBy('data'), orderBy('hora'));
+  onSnapshot(q, (snapshot) => {
+    state.events = snapshot.docs.map(d => ({ ...d.data(), _fid: d.id }));
+    renderAll();
+  }, (err) => {
+    console.error('Firestore listener error:', err);
+  });
 }
 
 // ==================== DOM REFS ====================
@@ -58,14 +100,13 @@ const toast        = $('toast');
 const navTabs      = document.querySelectorAll('.nav-tab');
 const views        = document.querySelectorAll('.view');
 
-// Form fields
-const fData     = $('form-data');
-const fDia      = $('form-dia');
-const fHora     = $('form-hora');
-const fLocal    = $('form-local');
-const fTipo     = $('form-tipo');
-const fObs      = $('form-obs');
-const fApoio    = $('form-apoio');
+const fData       = $('form-data');
+const fDia        = $('form-dia');
+const fHora       = $('form-hora');
+const fLocal      = $('form-local');
+const fTipo       = $('form-tipo');
+const fObs        = $('form-obs');
+const fApoio      = $('form-apoio');
 const fBaixo      = $('form-baixo');
 const fBateria    = $('form-bateria');
 const fGuitarra   = $('form-guitarra');
@@ -82,7 +123,7 @@ function initSplash() {
     setTimeout(() => {
       splash.classList.add('hidden');
       app.classList.remove('hidden');
-      renderAll();
+      listenFirestore();
     }, 650);
   }, 2000);
 }
@@ -92,8 +133,7 @@ function switchView(viewName) {
   state.currentView = viewName;
   navTabs.forEach(t => t.classList.toggle('active', t.dataset.view === viewName));
   views.forEach(v => {
-    const isActive = v.id === `view-${viewName}`;
-    v.classList.toggle('active', isActive);
+    v.classList.toggle('active', v.id === `view-${viewName}`);
   });
   renderView(viewName);
 }
@@ -150,17 +190,14 @@ function logoutAdmin() {
 // ==================== AUTO HORA ====================
 fDia.addEventListener('change', () => {
   const dia = fDia.value;
-  if (CONFIG.DEFAULT_TIMES[dia]) {
-    fHora.value = CONFIG.DEFAULT_TIMES[dia];
-  }
+  if (CONFIG.DEFAULT_TIMES[dia]) fHora.value = CONFIG.DEFAULT_TIMES[dia];
 });
 
 fData.addEventListener('change', () => {
   if (!fData.value) return;
   const d = new Date(fData.value + 'T12:00:00');
-  const dayIdx = d.getDay();
   const dayMap = ['domingo','segunda','terca','quarta','quinta','sexta','sabado'];
-  const dia = dayMap[dayIdx];
+  const dia = dayMap[d.getDay()];
   fDia.value = dia || 'outro';
   if (CONFIG.DEFAULT_TIMES[dia]) fHora.value = CONFIG.DEFAULT_TIMES[dia];
 });
@@ -169,14 +206,13 @@ fData.addEventListener('change', () => {
 $('btn-salvar').addEventListener('click', saveEvent);
 $('btn-limpar').addEventListener('click', clearForm);
 
-function saveEvent() {
+async function saveEvent() {
   if (!fData.value) { showToast('⚠️ Selecione uma data'); return; }
   if (!fLocal.value.trim()) { showToast('⚠️ Informe o local'); return; }
 
-  const apoioRaw = fApoio.value.split(',').map(s => s.trim()).filter(Boolean).slice(0,5);
+  const apoioRaw = fApoio.value.split(',').map(s => s.trim()).filter(Boolean).slice(0, 5);
 
   const event = {
-    id: Date.now().toString(),
     data: fData.value,
     dia: fDia.value,
     hora: fHora.value || '—',
@@ -194,17 +230,12 @@ function saveEvent() {
     tecnicosom: fTecnicosom.value.trim(),
   };
 
-  // Upsert: replace if same date+hora exists
-  const idx = state.events.findIndex(e => e.data === event.data && e.hora === event.hora && e.id !== event.id);
-  if (idx >= 0) state.events.splice(idx, 1);
-
-  state.events.push(event);
-  state.events.sort((a, b) => (a.data + a.hora).localeCompare(b.data + b.hora));
-
-  saveToStorage();
-  showToast('💾 Escala salva com sucesso!');
-  renderAll();
-  clearForm();
+  showToast('💾 Salvando...');
+  const id = await saveToFirestore(event);
+  if (id) {
+    showToast('✅ Escala salva com sucesso!');
+    clearForm();
+  }
 }
 
 function clearForm() {
@@ -213,9 +244,7 @@ function clearForm() {
 }
 
 function prefillForm() {
-  // Pre-set today's date
-  const today = new Date();
-  fData.value = today.toISOString().slice(0,10);
+  fData.value = new Date().toISOString().slice(0, 10);
   fData.dispatchEvent(new Event('change'));
 }
 
@@ -227,12 +256,11 @@ function renderAll() {
 }
 
 function renderView(view) {
-  if (view === 'proxima') renderProxima();
-  if (view === 'mes')     renderMes();
+  if (view === 'proxima')   renderProxima();
+  if (view === 'mes')       renderMes();
   if (view === 'historico') renderHistorico();
 }
 
-// --- FORMAT HELPERS ---
 function formatDate(dateStr) {
   if (!dateStr) return '—';
   const [y, m, d] = dateStr.split('-');
@@ -241,14 +269,12 @@ function formatDate(dateStr) {
 
 function getDayLabel(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr + 'T12:00:00');
-  return CONFIG.DAYS_PT[d.getDay()];
+  return CONFIG.DAYS_PT[new Date(dateStr + 'T12:00:00').getDay()];
 }
 
 function getMonthAbbr(dateStr) {
   if (!dateStr) return '';
-  const d = new Date(dateStr + 'T12:00:00');
-  return CONFIG.MONTHS_PT[d.getMonth()].slice(0,3);
+  return CONFIG.MONTHS_PT[new Date(dateStr + 'T12:00:00').getMonth()].slice(0, 3);
 }
 
 function getDay(dateStr) {
@@ -258,9 +284,8 @@ function getDay(dateStr) {
 
 // --- PRÓXIMA ---
 function renderProxima() {
-  const today = new Date().toISOString().slice(0,10);
-  const upcoming = state.events.filter(e => e.data >= today);
-  const event = upcoming[0] || null;
+  const today = new Date().toISOString().slice(0, 10);
+  const event = state.events.filter(e => e.data >= today)[0] || null;
 
   if (!event) {
     $('prox-tipo-badge').textContent = '—';
@@ -271,8 +296,7 @@ function renderProxima() {
     $('prox-apoio').innerHTML = '<span class="member-chip empty">—</span>';
     ['baixo','bateria','guitarra','violao','teclado','ministro','datashow','tecnicosom'].forEach(i => {
       const el = $(`prox-${i}`);
-      el.textContent = '—';
-      el.classList.add('empty');
+      if (el) { el.textContent = '—'; el.classList.add('empty'); }
     });
     return;
   }
@@ -290,45 +314,35 @@ function renderProxima() {
   }
 
   const apoioEl = $('prox-apoio');
-  if (event.apoio && event.apoio.length > 0) {
-    apoioEl.innerHTML = event.apoio.map(n => `<span class="member-chip">${n}</span>`).join('');
-  } else {
-    apoioEl.innerHTML = '<span class="member-chip empty">Nenhum</span>';
-  }
+  apoioEl.innerHTML = (event.apoio && event.apoio.length > 0)
+    ? event.apoio.map(n => `<span class="member-chip">${n}</span>`).join('')
+    : '<span class="member-chip empty">Nenhum</span>';
 
   ['baixo','bateria','guitarra','violao','teclado','ministro','datashow','tecnicosom'].forEach(i => {
     const el = $(`prox-${i}`);
-    const val = event[i] || '—';
-    el.textContent = val;
+    if (!el) return;
+    el.textContent = event[i] || '—';
     el.classList.toggle('empty', !event[i]);
   });
 }
 
 // --- MÊS ---
 function renderMes() {
-  const label = $('mes-label');
-  const list  = $('mes-list');
-  const empty = $('mes-empty');
-  const yr    = state.currentYear;
-  const mo    = state.currentMonth;
+  const yr  = state.currentYear;
+  const mo  = state.currentMonth;
+  $('mes-label').textContent = `${CONFIG.MONTHS_PT[mo]} ${yr}`;
 
-  label.textContent = `${CONFIG.MONTHS_PT[mo]} ${yr}`;
-
-  const moStr = String(mo + 1).padStart(2, '0');
+  const moStr   = String(mo + 1).padStart(2, '0');
   const filtered = state.events.filter(e => e.data.startsWith(`${yr}-${moStr}`));
+  const list    = $('mes-list');
+  const empty   = $('mes-empty');
 
   list.innerHTML = '';
-  if (filtered.length === 0) {
-    empty.classList.remove('hidden');
-    return;
-  }
+  if (filtered.length === 0) { empty.classList.remove('hidden'); return; }
   empty.classList.add('hidden');
 
-  filtered.forEach(ev => {
-    const today = new Date().toISOString().slice(0,10);
-    const past  = ev.data < today;
-    list.appendChild(buildMiniCard(ev, past));
-  });
+  const today = new Date().toISOString().slice(0, 10);
+  filtered.forEach(ev => list.appendChild(buildMiniCard(ev, ev.data < today)));
 }
 
 $('mes-prev').addEventListener('click', () => {
@@ -344,21 +358,15 @@ $('mes-next').addEventListener('click', () => {
 
 // --- HISTÓRICO ---
 function renderHistorico() {
+  const today = new Date().toISOString().slice(0, 10);
+  const past  = state.events.filter(e => e.data < today).sort((a, b) => b.data.localeCompare(a.data));
   const list  = $('historico-list');
   const empty = $('historico-empty');
-  const today = new Date().toISOString().slice(0,10);
-  const past  = state.events.filter(e => e.data < today).sort((a,b) => b.data.localeCompare(a.data));
 
   list.innerHTML = '';
-  if (past.length === 0) {
-    empty.classList.remove('hidden');
-    return;
-  }
+  if (past.length === 0) { empty.classList.remove('hidden'); return; }
   empty.classList.add('hidden');
-
-  past.forEach(ev => {
-    list.appendChild(buildMiniCard(ev, true));
-  });
+  past.forEach(ev => list.appendChild(buildMiniCard(ev, true)));
 }
 
 // --- BUILD MINI CARD ---
@@ -376,23 +384,22 @@ function buildMiniCard(ev, past) {
       <div class="mini-hora">${getDayLabel(ev.data)} • ${ev.hora}</div>
     </div>
     <div class="mini-actions">
-      ${state.isAdmin ? `<button class="btn-delete" data-id="${ev.id}">Excluir</button>` : ''}
+      ${state.isAdmin ? `<button class="btn-delete" data-id="${ev._fid}">Excluir</button>` : ''}
       <span class="mini-arrow">›</span>
     </div>
   `;
 
-  // Click → show details in proxima
   card.addEventListener('click', (e) => {
     if (e.target.classList.contains('btn-delete')) return;
     highlightEvent(ev);
   });
 
-  // Delete
   const delBtn = card.querySelector('.btn-delete');
   if (delBtn) {
-    delBtn.addEventListener('click', (e) => {
+    delBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      deleteEvent(ev.id);
+      await deleteFromFirestore(ev._fid);
+      showToast('🗑️ Escala removida');
     });
   }
 
@@ -400,9 +407,7 @@ function buildMiniCard(ev, past) {
 }
 
 function highlightEvent(ev) {
-  // Temporarily render this event in proxima and switch view
   switchView('proxima');
-  // Highlight by manually setting fields
   $('prox-tipo-badge').textContent = ev.tipo;
   $('prox-data').textContent = `${getDayLabel(ev.data)}, ${formatDate(ev.data)}`;
   $('prox-hora').textContent = ev.hora;
@@ -416,23 +421,16 @@ function highlightEvent(ev) {
   }
 
   const apoioEl = $('prox-apoio');
-  if (ev.apoio && ev.apoio.length > 0) {
-    apoioEl.innerHTML = ev.apoio.map(n => `<span class="member-chip">${n}</span>`).join('');
-  } else {
-    apoioEl.innerHTML = '<span class="member-chip empty">Nenhum</span>';
-  }
+  apoioEl.innerHTML = (ev.apoio && ev.apoio.length > 0)
+    ? ev.apoio.map(n => `<span class="member-chip">${n}</span>`).join('')
+    : '<span class="member-chip empty">Nenhum</span>';
+
   ['baixo','bateria','guitarra','violao','teclado','ministro','datashow','tecnicosom'].forEach(i => {
     const el = $(`prox-${i}`);
+    if (!el) return;
     el.textContent = ev[i] || '—';
     el.classList.toggle('empty', !ev[i]);
   });
-}
-
-function deleteEvent(id) {
-  state.events = state.events.filter(e => e.id !== id);
-  saveToStorage();
-  showToast('🗑️ Escala removida');
-  renderAll();
 }
 
 // ==================== TOAST ====================
@@ -440,9 +438,7 @@ let toastTimer;
 function showToast(msg) {
   toast.textContent = msg;
   toast.classList.remove('hidden');
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => toast.classList.add('show'));
-  });
+  requestAnimationFrame(() => requestAnimationFrame(() => toast.classList.add('show')));
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => {
     toast.classList.remove('show');
@@ -458,5 +454,4 @@ if ('serviceWorker' in navigator) {
 }
 
 // ==================== INIT ====================
-loadFromStorage();
 initSplash();
